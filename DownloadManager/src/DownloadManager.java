@@ -1,12 +1,11 @@
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
+import java.io.DataOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -22,51 +21,48 @@ import javax.swing.table.DefaultTableModel;
  *
  * @author ASUS R.O.G
  */
-public class DownloadManager extends javax.swing.JFrame{
+public class DownloadManager extends javax.swing.JFrame implements Runnable{
 
     private Socket socket;
-    private ObjectOutputStream outputStream;
+    private DataOutputStream outputStream;
     private ObjectInputStream inputStream;
     private final String IP_ADDRESS = "localhost";
     private final int PORT = 2107;
-    private static final String PATH = "C:\\Users\\ASUS R.O.G\\Downloads\\";
-    private ArrayList<String> allFiles;
+    private static final String PATH = "E:\\KULIAH\\SEMESTER 7\\PROGNET\\client\\";
+    private ArrayList<String> allFiles = new ArrayList<>();
+    private Boolean running = false;
     
     public DownloadManager() {
         initComponents();
-//        try {
-//            socket = new Socket(IP_ADDRESS, PORT);
-//            System.out.println("socket : "+socket.getRemoteSocketAddress());
-//            inputStream = new ObjectInputStream(socket.getInputStream());
-//            outputStream = new ObjectOutputStream(socket.getOutputStream());
-//        } catch (IOException ex) {
-//            Logger.getLogger(DownloadManager.class.getName()).log(Level.SEVERE, null, ex);
-//        }
     }
     
+    @Override
     public void run() {
         try{
             socket = new Socket(IP_ADDRESS, PORT);
             System.out.println("socket : "+socket.getRemoteSocketAddress());
-            inputStream = new ObjectInputStream(socket.getInputStream());
-            outputStream = new ObjectOutputStream(socket.getOutputStream());
+            inputStream = new ObjectInputStream(socket.getInputStream());  //pintu penerimaan data dari server
+            outputStream = new DataOutputStream(socket.getOutputStream()); //pintu untuk mengirimkan data/perintah ke server
+            
             //meminta seluruh nama files yang ada di server
-            outputStream.writeObject("GET-ALL");
-            String perintah = (String) inputStream.readObject();
-            System.out.println("perintah"+perintah);
-            allFiles = (ArrayList<String>) inputStream.readObject();
+            outputStream.writeUTF("GET-ALL");//memberikan perintah ke server untuk memberikan seluruh data nama file yang dimiliki
+            String perintah = (String) inputStream.readObject(); //menerima perintah bawaan dari server
+            allFiles = (ArrayList<String>) inputStream.readObject(); //menerima data nama file dari server
             updateTabel();
             
-            while(true){
-                perintah = (String) inputStream.readObject();
+            running = true;
+//            String perintah;
+            while(running){
+                perintah = (String) inputStream.readObject(); //menerima perintah dari server
                 System.out.println(perintah);
                 if(perintah.equals("ALL_FILES")){
-                    allFiles = (ArrayList<String>) inputStream.readObject();
+                    allFiles = (ArrayList<String>) inputStream.readObject(); //menerima data nama file dari server
                     updateTabel();
                 }else if(perintah.equals("FILE-DOWNLOADED")){
-                    BufferedInputStream file = (BufferedInputStream) inputStream.readObject();
+                    System.out.println("file-downloaded");
+                    byte[] data = (byte[]) inputStream.readObject(); //menerima byte data file yang ingin di download dari server
                     String fileName = fileNameText.getText();
-                    paketDownloadFile(file, fileName);
+                    paketDownloadFile(data, fileName);
                 }
             }
         }catch(IOException | ClassNotFoundException ex){
@@ -74,19 +70,10 @@ public class DownloadManager extends javax.swing.JFrame{
         }
     }
     
-    public void paketDownloadFile(BufferedInputStream file, String filename){
-        BufferedOutputStream download = null;
-        try {
-            download = new BufferedOutputStream(new FileOutputStream(PATH+filename));
-            int byteRead;
-            while((byteRead = file.read()) != -1){
-                download.write(byteRead);
-            }
-        } catch (FileNotFoundException ex) {
-            Logger.getLogger(ManageFile.class.getName()).log(Level.SEVERE, null, ex);
-        } catch (IOException ex) {
-            Logger.getLogger(ManageFile.class.getName()).log(Level.SEVERE, null, ex);
-        }  
+    public void paketDownloadFile(byte[] data, String filename) throws IOException{
+        File file = new File(PATH+filename);
+        Path write = Files.write(file.toPath(), data);
+        System.out.println("path : "+write.toString());
     }
     
     public void updateTabel(){
@@ -114,7 +101,6 @@ public class DownloadManager extends javax.swing.JFrame{
         fileNameText = new javax.swing.JLabel();
         btnDownload = new javax.swing.JButton();
         downloadProgress = new javax.swing.JProgressBar();
-        btnUpload = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setTitle("Download Manager");
@@ -122,10 +108,7 @@ public class DownloadManager extends javax.swing.JFrame{
 
         tabelData.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
-                {null, null},
-                {null, null},
-                {null, null},
-                {null, null}
+
             },
             new String [] {
                 "No", "Nama File"
@@ -146,6 +129,11 @@ public class DownloadManager extends javax.swing.JFrame{
                 return canEdit [columnIndex];
             }
         });
+        tabelData.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                tabelDataMouseClicked(evt);
+            }
+        });
         jScrollPane1.setViewportView(tabelData);
         if (tabelData.getColumnModel().getColumnCount() > 0) {
             tabelData.getColumnModel().getColumn(0).setResizable(false);
@@ -156,13 +144,6 @@ public class DownloadManager extends javax.swing.JFrame{
         btnDownload.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 btnDownloadActionPerformed(evt);
-            }
-        });
-
-        btnUpload.setText("Upload");
-        btnUpload.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                btnUploadActionPerformed(evt);
             }
         });
 
@@ -179,26 +160,22 @@ public class DownloadManager extends javax.swing.JFrame{
                         .addGap(50, 50, 50)
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                             .addComponent(fileNameText, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(btnDownload, javax.swing.GroupLayout.DEFAULT_SIZE, 188, Short.MAX_VALUE)
-                            .addComponent(btnUpload, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))))
+                            .addComponent(btnDownload, javax.swing.GroupLayout.DEFAULT_SIZE, 188, Short.MAX_VALUE))))
                 .addContainerGap(83, Short.MAX_VALUE))
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(layout.createSequentialGroup()
                         .addGap(45, 45, 45)
-                        .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(31, 31, 31))
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
-                        .addGap(120, 120, 120)
-                        .addComponent(btnUpload, javax.swing.GroupLayout.PREFERRED_SIZE, 35, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(layout.createSequentialGroup()
+                        .addGap(138, 138, 138)
                         .addComponent(fileNameText, javax.swing.GroupLayout.PREFERRED_SIZE, 35, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(18, 18, 18)
-                        .addComponent(btnDownload, javax.swing.GroupLayout.PREFERRED_SIZE, 35, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(168, 168, 168)))
+                        .addComponent(btnDownload, javax.swing.GroupLayout.PREFERRED_SIZE, 35, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addGap(31, 31, 31)
                 .addComponent(downloadProgress, javax.swing.GroupLayout.PREFERRED_SIZE, 35, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap(58, Short.MAX_VALUE))
         );
@@ -206,19 +183,21 @@ public class DownloadManager extends javax.swing.JFrame{
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
-    private void btnUploadActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUploadActionPerformed
-        //todo open filemanager
-    }//GEN-LAST:event_btnUploadActionPerformed
-
     private void btnDownloadActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnDownloadActionPerformed
-//        String fileName = fileNameText.getText();
+        String fileName = fileNameText.getText();
         try {
-            outputStream.writeObject("DOWNLOAD");
-//            outputStream.writeObject(fileName);
+            outputStream.writeUTF("DOWNLOAD");
+            outputStream.writeUTF(fileName);
         } catch (IOException ex) {
             Logger.getLogger(DownloadManager.class.getName()).log(Level.SEVERE, null, ex);
         }
     }//GEN-LAST:event_btnDownloadActionPerformed
+
+    private void tabelDataMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_tabelDataMouseClicked
+        int baris = tabelData.getSelectedRow();
+        String fileName = tabelData.getModel().getValueAt(baris, 1).toString();
+        fileNameText.setText(fileName);
+    }//GEN-LAST:event_tabelDataMouseClicked
 
     /**
      * @param args the command line arguments
@@ -251,12 +230,11 @@ public class DownloadManager extends javax.swing.JFrame{
         /* Create and display the form */
         DownloadManager screen = new DownloadManager();
         screen.setVisible(true);
-        screen.run();
+        new Thread(screen).start();
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton btnDownload;
-    private javax.swing.JButton btnUpload;
     private javax.swing.JProgressBar downloadProgress;
     private javax.swing.JLabel fileNameText;
     private javax.swing.JScrollPane jScrollPane1;

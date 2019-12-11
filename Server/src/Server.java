@@ -1,18 +1,16 @@
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
+import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -30,7 +28,7 @@ import java.util.logging.Logger;
 public class Server {
     
     private static final int PORT = 2107;
-    private static final String PATH = "E:\\KULIAH\\SEMESTER 7\\PROGNET\\Data\\";
+    private static final String PATH = "E:\\KULIAH\\SEMESTER 7\\PROGNET\\server\\";
     
     public static void main(String[] args) throws IOException {
         ServerSocket listener = new ServerSocket(PORT);
@@ -38,18 +36,19 @@ public class Server {
         try {
             while (true) {
                 new Services(listener.accept()).start();
-            }
+        }
         } finally {
             listener.close();
-        }
-        
     }
-    
+
+            }
+
     private static class Services extends Thread{
         private Socket socket;
-        private ObjectInputStream input;
+        private DataInputStream input;
         private ObjectOutputStream output;
-        private ArrayList<String> allFiles;
+        private ArrayList<String> allFiles = new ArrayList<>();
+        private Boolean running = false;
         
         public Services(Socket socket) {
             this.socket = socket;
@@ -57,27 +56,19 @@ public class Server {
         
         public void run(){
             try {
-                input = new ObjectInputStream(socket.getInputStream());
+                input = new DataInputStream(socket.getInputStream());
                 output = new ObjectOutputStream(socket.getOutputStream());
                 
                 while(true){
                     String filename;
-                    String perintah = (String) input.readObject();
-                    System.out.println("a");
-                    //proses upload file dari client untuk di simpan di server
-                    if(perintah.equals("UPLOAD")){
-                        System.out.println("UPLOAD");
-                        BufferedInputStream file = (BufferedInputStream) input.readObject();
-                        filename = (String) input.readObject();
-                        paketUploadFile(file, filename);
-                    }
-                    //proses untuk mengirimkan file yang diminta oleh client
-                    else if(perintah.equals("DOWNLOAD")){
-                        System.out.println("DOWNLOAD");
-                        filename = (String) input.readObject();
-                        BufferedInputStream file = paketPengirimanFile(filename);
+                    String perintah = (String) input.readUTF();
+                    System.out.println("perintah : "+perintah);
+                    if(perintah.equals("DOWNLOAD")){
+                        filename = (String) input.readUTF();
+                        byte[] data = paketPengirimanFile(filename);
+                        System.out.println("file download:"+data.length);
                         output.writeObject("FILE-DOWNLOADED");
-                        output.writeObject(file);
+                        output.writeObject(data);
                     }
                     //proses untuk mengirimkan seluruh file yang dimiliki server kepada client
                     else if(perintah.equals("GET-ALL")){
@@ -88,45 +79,28 @@ public class Server {
                         output.writeObject(allFiles);
                     }
                 }
-            } catch (IOException | ClassNotFoundException ex) {
+            } catch (IOException ex) {
                 Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
         
         public void readAllFiles(final File folder){
+            System.out.println("list:"+folder.listFiles().length);
             for(final File file : folder.listFiles()){
                 if (file.isDirectory()) {
                     readAllFiles(file);
                 } else {
+                    System.out.println("file name "+file.getName());
                     allFiles.add(file.getName());
                 }
             }
         }
         
-        public BufferedInputStream paketPengirimanFile(String filename){
-            BufferedInputStream file = null;
-            try {
-                file = new BufferedInputStream(new FileInputStream(PATH+filename));
-            } catch (FileNotFoundException ex) {
-                Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
-            }
-            return file;
-        }
-        
-        public void paketUploadFile(BufferedInputStream file, String filename){
-            BufferedOutputStream upload = null;
-            try {
-                upload = new BufferedOutputStream(new FileOutputStream(PATH+filename));
-                int byteRead;
-                while((byteRead = file.read()) != -1){
-                    upload.write(byteRead);
-                }
-            } catch (FileNotFoundException ex) {
-                Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
-            } catch (IOException ex) {
-                Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
-            }
+        public byte[] paketPengirimanFile(String filename) throws IOException{
+            byte[] data = null;
+            File file = new File(PATH+filename);
+            data = Files.readAllBytes(file.toPath());
+            return data;
         }
     }
-    
 }
